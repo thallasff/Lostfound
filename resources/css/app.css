@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.item-pin-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* PIN container (lebih tinggi karena ada jarum) */
+.item-pin {
+  width: 54px;
+  height: 68px;            /* lebih tinggi */
+  position: relative;
+  background: transparent;
+}
+
+/* Bulatan foto */
+.item-pin .bubble {
+  width: 54px;
+  height: 54px;
+  border-radius: 9999px;
+  overflow: hidden;
+  background: #fff;
+  border: 3px solid #fb923c;
+  box-shadow: 0 10px 22px rgba(0,0,0,.15);
+  position: relative;
+}
+
+/* gambar di dalam bubble */
+.item-pin .bubble img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* jarum/pointer */
+.item-pin .pointer {
+  position: absolute;
+  left: 50%;
+  bottom: 0px;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-top: 16px solid #fb923c; /* warna ikut status */
+  filter: drop-shadow(0 6px 6px rgba(0,0,0,.15));
+}
+
+/* MERAH = HILANG */
+.item-pin--hilang .bubble { border-color: #ef4444; }
+.item-pin--hilang .pointer { border-top-color: #ef4444; }
+
+/* HIJAU = TEMUAN */
+.item-pin--temuan .bubble { border-color: #22c55e; }
+.item-pin--temuan .pointer { border-top-color: #22c55e; }
+

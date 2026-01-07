@@ -91,16 +91,5 @@
             </div>
 
         </div>
-
-        {{-- Logout kecil (opsional, kalau kamu mau taruh di dashboard juga) --}}
-        <div class="mt-4 flex justify-end">
-            <form method="POST" action="{{ route('admin.logout') }}">
-                @csrf
-                <button class="px-4 py-2 rounded-lg border hover:bg-gray-50">
-                    Logout
-                </button>
-            </form>
-        </div>
-
     </div>
 @endsection

@@ -63,8 +63,10 @@
 
         <div class="p-4 flex-1 overflow-y-auto space-y-3" style="max-height: 60vh;">
           @php
-            $msgs = ($messages instanceof \Illuminate\Support\Collection) ? $messages : collect($messages);
-          @endphp
+  $msgs = ($messages instanceof \Illuminate\Support\Collection) ? $messages : collect($messages);
+  $lastAdmin = $msgs->where('sender_pelapor_id', 0)->last();
+@endphp
+
 
           @foreach($msgs as $m)
             @php
@@ -88,6 +90,11 @@
                 </div>
               </div>
             </div>
+            @if($isAdmin && $lastAdmin && $m->id === $lastAdmin->id && $m->read_at)
+  <div class="text-[11px] text-gray-400 mt-1 pr-1 text-right">
+    Seen {{ optional($m->read_at)->format('H:i') }}
+  </div>
+@endif
           @endforeach
         </div>
 

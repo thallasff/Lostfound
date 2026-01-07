@@ -12,20 +12,23 @@
         </div>
 
         <div class="divide-y">
-          @php $users = $users ?? collect(); @endphp
+          @php $users = $users ?? collect(); $unread = $unread ?? collect(); @endphp
           @forelse($threads as $t)
             @php
               $me = auth()->id();
               $lastotherId = ($me === $t->user_low_id) ? $t->user_high_id : $t->user_low_id;
               $active = isset($thread) && $thread->id === $t->id;
             @endphp
+            @php
+  $badge = (int)($unread[$t->id] ?? 0);
+@endphp
 
   @php
     $u = $users[$lastotherId] ?? null;
 
     if ((int)$lastotherId === 0) {
         $name = 'Admin (Support)';
-        $avatar = asset('icons/admin.png'); // boleh ganti user.png kalau belum ada
+        $avatar = asset('image/admin.png');
     } else {
         $name = $u->username ?? ('Pelapor #'.$lastotherId);
         $pp = optional($u?->profile)->foto_profil;
@@ -37,8 +40,9 @@
     class="flex items-center gap-3 p-4 hover:bg-orange-50 transition {{ $active ? 'bg-orange-50' : '' }}">
 
     <img src="{{ $avatar }}"
-        class="w-11 h-11 rounded-full object-cover border border-gray-200"
-        alt="avatar">
+     onerror="this.onerror=null; this.src='{{ asset('image/admin.png') }}';"
+     class="w-11 h-11 rounded-full object-cover border border-gray-200"
+     alt="">
 
     <div class="min-w-0">
       <div class="font-medium text-gray-800 truncate">
@@ -48,6 +52,12 @@
         Klik untuk buka chat
       </div>
     </div>
+    @if($badge > 0)
+  <span class="min-w-6 h-6 px-2 rounded-full bg-orange-500 text-white text-xs flex items-center justify-center">
+    {{ $badge }}
+  </span>
+@endif
+
   </a>
 
           @empty
@@ -64,7 +74,7 @@
     <div class="p-4 border-b flex items-center justify-between">
       <div class="font-semibold text-gray-800">
         @if((int)($otherId ?? -1) === 0)
-          Admin
+          Admin (Support)
         @else
           {{ $otherUser?->username ?? ('Pelapor #'.($otherId ?? '-')) }}
         @endif

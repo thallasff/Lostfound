@@ -37,8 +37,18 @@ class ChatController extends Controller
         ->get()
         ->keyBy('pelapor_id');
 
-    return view('chat.index', compact('threads', 'users'));
+    // ✅ UNREAD untuk badge (pesan dari lawan yang belum kebaca)
+    $unread = ChatMessage::query()
+        ->selectRaw('thread_id, COUNT(*) as total')
+        ->whereIn('thread_id', $threads->pluck('id'))
+        ->whereNull('read_at')
+        ->where('sender_pelapor_id', '!=', $uid) // pesan dari lawan
+        ->groupBy('thread_id')
+        ->pluck('total', 'thread_id');
+
+    return view('chat.index', compact('threads', 'users', 'unread'));
 }
+
 
 public function show(ChatThread $thread)
 {

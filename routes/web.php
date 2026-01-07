@@ -13,12 +13,14 @@ use App\Http\Controllers\FoundController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\PengambilanBarangController;
 use App\Http\Controllers\ClaimController;
+use App\Http\Controllers\Admin\UserManagementController;
 
 // Controllers admin
 use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Admin\AdminChatController;
 use App\Http\Controllers\Admin\VerificationController;
+use App\Http\Controllers\Admin\AdminProfileController;
 
 
 // OPTIONAL (bawaan Laravel untuk kirim email verifikasi)
@@ -185,6 +187,9 @@ Route::get('/verifikasi/penemuan/{item}', [VerificationController::class, 'showP
 
 Route::post('/verifikasi/penemuan/{item}/selesai', [VerificationController::class, 'markSelesaiPenemuan'])->name('verify.penemuan.selesai');
 Route::post('/verifikasi/penemuan/{item}/reject-handover', [VerificationController::class, 'rejectHandoverPenemuan'])->name('verify.penemuan.rejectHandover');
+
+Route::get('/profile', [AdminProfileController::class, 'edit'])->name('profile.edit');
+Route::patch('/profile', [AdminProfileController::class, 'update'])->name('profile.update');
 
     });
 });

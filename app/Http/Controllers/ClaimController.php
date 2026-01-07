@@ -3,17 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Models\Claim;
-use App\Models\Chat;
+use App\Models\ChatMessage;
 use App\Models\ChatThread;
 use App\Models\BarangHilang;
 use App\Models\Temuan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class ClaimController extends Controller
 {
-    // Penemu (holder) kirim template form pengambilan ke chat
+    // PENEMU (owner) kirim template form pengambilan ke chat
     public function sendForm(Request $request, ChatThread $thread)
     {
         $userId = auth()->id();
@@ -25,7 +24,7 @@ class ClaimController extends Controller
 
         // kalau sudah ada claim aktif di thread ini, jangan bikin lagi
         $existing = Claim::where('thread_id', $thread->id)
-            ->whereNotIn('status', ['closed'])
+            ->whereNotIn('status', ['closed', 'closed_by_admin'])
             ->latest('id')
             ->first();
 
@@ -33,38 +32,37 @@ class ClaimController extends Controller
             return back()->with('info', 'Form pengambilan sudah pernah dibuat di chat ini.');
         }
 
-        // holder = yang klik tombol ini (penemu)
-        $holderId = $userId;
+        // owner = yang klik tombol ini (penemu)
+        $ownerId = $userId;
         $requesterId = ($thread->user_low_id == $userId) ? $thread->user_high_id : $thread->user_low_id;
 
-        DB::transaction(function () use ($thread, $holderId, $requesterId) {
+        DB::transaction(function () use ($thread, $ownerId, $requesterId) {
             $claim = Claim::create([
                 'thread_id'    => $thread->id,
-                'barang_type'  => $thread->barang_type,
+                'barang_type'  => $thread->barang_type, // 'hilang' | 'temuan'
                 'barang_id'    => $thread->barang_id,
                 'requester_id' => $requesterId,
-                'holder_id'    => $holderId,
+                'owner_id'     => $ownerId,
                 'status'       => 'form_sent',
-                'form_data'    => null,
+                'form_payload' => null,
+                'decided_at'   => null,
             ]);
 
-            // kirim pesan template ke chat (DM style)
             $pesan = "📌 *Form Pengambilan Barang*\n"
                 . "Tolong isi detail berikut supaya saya bisa verifikasi:\n"
                 . "1) Ciri spesifik barang (warna/brand/isi)\n"
                 . "2) Bukti kepemilikan (nota/foto lama/serial number)\n"
                 . "3) Perkiraan waktu & lokasi terakhir\n"
                 . "4) Kontak & waktu janjian ambil\n\n"
-                . "Klik tombol 'Isi Form Pengambilan' (nanti di UI) / atau balas dengan format di atas.\n"
+                . "Nanti kamu isi lewat form (atau balas sesuai format).\n"
                 . "ID Klaim: #{$claim->id}";
 
-            Chat::create([
-                'thread_id' => $thread->id,
-                'sender_pelapor_id' => $holderId,
-                'receiver_pelapor_id' => $requesterId,
-                'pesan' => $pesan,
-                'waktu_kirim' => now(),
-            ]);
+ChatMessage::create([
+    'thread_id'         => $thread->id,
+    'sender_pelapor_id' => $ownerId,
+    'message_type'      => 'system', // atau 'text' kalau mau
+    'body'              => $pesan,
+]);
 
             $thread->update(['last_message_at' => now()]);
         });
@@ -72,74 +70,64 @@ class ClaimController extends Controller
         return back()->with('success', 'Template form pengambilan terkirim.');
     }
 
-    // Requester submit jawaban form + upload foto bukti
+    // REQUESTER submit jawaban form + upload 1 foto bukti kepemilikan
     public function submit(Request $request, Claim $claim)
-    {
-        $userId = auth()->id();
+{
+    $userId = auth()->id();
 
-        if ($userId !== (int)$claim->requester_id) abort(403);
-        if (!in_array($claim->status, ['form_sent', 'requested'])) {
-            return back()->with('info', 'Status klaim tidak bisa disubmit lagi.');
-        }
+    if ($userId !== (int) $claim->requester_id) abort(403);
 
-        $data = $request->validate([
-            'ciri_barang' => 'required|string|max:1000',
-            'bukti_kepemilikan' => 'nullable|string|max:1000',
-            'kronologi' => 'nullable|string|max:1500',
-            'kontak' => 'required|string|max:200',
-            'foto_klaim' => 'nullable|array|max:3',
-            'foto_klaim.*' => 'image|max:4096',
-        ]);
-
-        DB::transaction(function () use ($claim, $data, $request) {
-            $paths = [null, null, null];
-
-            if ($request->hasFile('foto_klaim')) {
-                foreach ($request->file('foto_klaim') as $i => $file) {
-                    if ($i > 2) break;
-                    $paths[$i] = $file->store('claims/klaim', 'public');
-                }
-            }
-
-            $claim->update([
-                'form_data' => [
-                    'ciri_barang' => $data['ciri_barang'],
-                    'bukti_kepemilikan' => $data['bukti_kepemilikan'] ?? null,
-                    'kronologi' => $data['kronologi'] ?? null,
-                    'kontak' => $data['kontak'],
-                ],
-                'foto_klaim_1' => $paths[0],
-                'foto_klaim_2' => $paths[1],
-                'foto_klaim_3' => $paths[2],
-                'status' => 'submitted',
-            ]);
-
-            Chat::create([
-                'thread_id' => $claim->thread_id,
-                'sender_pelapor_id' => $claim->requester_id,
-                'receiver_pelapor_id' => $claim->holder_id,
-                'pesan' => "✅ Form pengambilan sudah diisi untuk Klaim #{$claim->id}. Silakan cek dan tentukan *Setuju/Tolak*.",
-                'waktu_kirim' => now(),
-            ]);
-
-            ChatThread::where('id', $claim->thread_id)->update(['last_message_at' => now()]);
-        });
-
-        return back()->with('success', 'Form pengambilan terkirim ke penemu.');
+    if (!in_array($claim->status, ['form_sent', 'requested'])) {
+        return back()->with('info', 'Status klaim tidak bisa disubmit lagi.');
     }
 
-    // Holder approve / reject
+    $data = $request->validate([
+        'ciri_barang' => 'required|string|max:1000',
+        'bukti_kepemilikan' => 'nullable|string|max:1000', // boleh tetap ada teksnya kalau mau
+        'kronologi' => 'nullable|string|max:1500',
+        'kontak' => 'required|string|max:200',
+        // ✅ foto_bukti dihapus
+    ]);
+
+    DB::transaction(function () use ($claim, $data) {
+        $claim->update([
+            'form_payload' => [
+                'ciri_barang' => $data['ciri_barang'],
+                'bukti_kepemilikan' => $data['bukti_kepemilikan'] ?? null,
+                'kronologi' => $data['kronologi'] ?? null,
+                'kontak' => $data['kontak'],
+            ],
+            'status' => 'submitted',
+            'decided_at' => null,
+        ]);
+
+        ChatMessage::create([
+    'thread_id'         => $claim->thread_id,
+    'sender_pelapor_id' => $claim->requester_id,
+    'message_type'      => 'text',
+    'body'              => "✅ Form pengambilan sudah diisi untuk Klaim #{$claim->id}. Silakan cek dan tentukan *Setuju/Tolak*.",
+]);
+
+
+        ChatThread::where('id', $claim->thread_id)->update(['last_message_at' => now()]);
+    });
+
+    return back()->with('success', 'Form pengambilan terkirim ke penemu.');
+}
+
+
+    // OWNER approve / reject
     public function decide(Request $request, Claim $claim)
     {
         $userId = auth()->id();
-        if ($userId !== (int)$claim->holder_id) abort(403);
+        if ($userId !== (int) $claim->owner_id) abort(403);
 
         $data = $request->validate([
             'decision' => 'required|in:approve,reject',
             'note' => 'nullable|string|max:500',
         ]);
 
-        if (!in_array($claim->status, ['submitted'])) {
+        if ($claim->status !== 'submitted') {
             return back()->with('info', 'Klaim belum disubmit / status tidak sesuai.');
         }
 
@@ -147,31 +135,31 @@ class ClaimController extends Controller
             if ($data['decision'] === 'approve') {
                 $claim->update([
                     'status' => 'approved',
-                    'approved_at' => now(),
+                    'decided_at' => now(),
                 ]);
 
-                Chat::create([
-                    'thread_id' => $claim->thread_id,
-                    'sender_pelapor_id' => $claim->holder_id,
-                    'receiver_pelapor_id' => $claim->requester_id,
-                    'pesan' => "✅ Klaim #{$claim->id} *DISETUJUI*. Silakan janjian ambil barang.\n"
-                             . "Setelah serah-terima, saya akan upload bukti penyerahan agar laporan selesai.",
-                    'waktu_kirim' => now(),
-                ]);
+               ChatMessage::create([
+    'thread_id'         => $claim->thread_id,
+    'sender_pelapor_id' => $claim->owner_id,
+    'message_type'      => 'text',
+    'body'              => "✅ Klaim #{$claim->id} *DISETUJUI*. Silakan janjian ambil barang.\nSetelah serah-terima, saya akan upload bukti penyerahan untuk diverifikasi admin.",
+]);
+
             } else {
                 $claim->update([
                     'status' => 'rejected',
-                    'rejected_at' => now(),
+                    'decided_at' => now(),
                 ]);
 
                 $note = $data['note'] ? ("\nCatatan: ".$data['note']) : '';
-                Chat::create([
-                    'thread_id' => $claim->thread_id,
-                    'sender_pelapor_id' => $claim->holder_id,
-                    'receiver_pelapor_id' => $claim->requester_id,
-                    'pesan' => "❌ Klaim #{$claim->id} *DITOLAK*.".$note,
-                    'waktu_kirim' => now(),
-                ]);
+
+ChatMessage::create([
+    'thread_id'         => $claim->thread_id,
+    'sender_pelapor_id' => $claim->owner_id,
+    'message_type'      => 'text',
+    'body'              => "❌ Klaim #{$claim->id} *DITOLAK*.".$note,
+]);
+
             }
 
             ChatThread::where('id', $claim->thread_id)->update(['last_message_at' => now()]);
@@ -180,18 +168,18 @@ class ClaimController extends Controller
         return back()->with('success', 'Keputusan klaim tersimpan.');
     }
 
-    // Holder upload bukti serah-terima -> close claim -> barang hilang dari map
+    // OWNER upload bukti serah-terima (1 foto) -> status handover_uploaded -> nunggu admin
     public function uploadHandover(Request $request, Claim $claim)
     {
         $userId = auth()->id();
-        if ($userId !== (int)$claim->holder_id) abort(403);
+        if ((int)$uid !== (int)$claim->owner_id) abort(403);
 
-        if (!in_array($claim->status, ['approved'])) {
-            return back()->with('info', 'Klaim belum disetujui / status tidak sesuai.');
-        }
+        if (in_array($claim->status, ['closed','closed_by_admin'], true)) {
+    return back()->with('info', 'Klaim ini sudah ditutup.');
+}
 
         $data = $request->validate([
-            'foto_serah_terima' => 'required|image|max:4096',
+            'foto_serah_terima' => 'required|image|mimes:jpg,jpeg,png,webp|max:4096',
             'catatan' => 'nullable|string|max:500',
         ]);
 
@@ -199,31 +187,74 @@ class ClaimController extends Controller
             $path = $request->file('foto_serah_terima')->store('claims/serah-terima', 'public');
 
             $claim->update([
-                'foto_serah_terima' => $path,
-                'status' => 'closed',
-                'closed_at' => now(),
+                'handover_proof_photo' => $path,        // ✅ sesuai DB
+                'status' => 'handover_uploaded',        // ✅ nunggu admin
+                'decided_at' => null,
             ]);
 
-            // 🔥 update status barang supaya hilang dari map
+            // 🔥 OPTIONAL: kalau mau langsung ilang dari map JANGAN di sini
+            // Karena kamu bilang admin yang tentuin selesai/belum.
+            // Jadi barang cukup ditandai "ditemukan" aja (bukan "selesai").
+
             if ($claim->barang_type === 'hilang') {
-                BarangHilang::where('barang_id', $claim->barang_id)->update(['status' => 'selesai']);
+                BarangHilang::where('barang_id', $claim->barang_id)->update(['status' => 'ditemukan']);
             } else {
-                // asumsi pk temuan = penemuan_id
-                Temuan::where('penemuan_id', $claim->barang_id)->update(['status_verifikasi' => 'selesai']);
+                Temuan::where('penemuan_id', $claim->barang_id)->update(['status_verifikasi' => 'ditemukan']);
             }
 
             $note = $data['catatan'] ? ("\nCatatan: ".$data['catatan']) : '';
-            Chat::create([
-                'thread_id' => $claim->thread_id,
-                'sender_pelapor_id' => $claim->holder_id,
-                'receiver_pelapor_id' => $claim->requester_id,
-                'pesan' => "📷 Bukti serah-terima untuk Klaim #{$claim->id} sudah diupload. Laporan ditutup.".$note,
-                'waktu_kirim' => now(),
-            ]);
+            ChatMessage::create([
+    'thread_id'         => $claim->thread_id,
+    'sender_pelapor_id' => $claim->owner_id,
+    'message_type'      => 'text',
+    'body'              => "📷 Bukti serah-terima untuk Klaim #{$claim->id} sudah diupload. Menunggu verifikasi admin.",
+]);
+
 
             ChatThread::where('id', $claim->thread_id)->update(['last_message_at' => now()]);
         });
 
-        return back()->with('success', 'Bukti serah-terima tersimpan. Barang akan hilang dari map.');
+        return back()->with('success', 'Bukti serah-terima tersimpan. Menunggu verifikasi admin.');
     }
+
+public function submitToAdmin(Request $request, Claim $claim)
+{
+    $uid = auth()->id();
+
+    // ✅ hanya penemu/owner yang boleh submit ke admin
+    if ((int)$uid !== (int)$claim->owner_id) abort(403);
+
+    // ✅ hanya boleh kalau claim masih aktif
+    if (in_array($claim->status, ['closed', 'closed_by_admin'], true)) {
+        return back()->with('info', 'Klaim ini sudah ditutup.');
+    }
+
+    $data = $request->validate([
+        'form_text' => 'required|string|min:10|max:5000',
+        'foto_serah_terima' => 'required|image|mimes:jpg,jpeg,png,webp|max:4096',
+    ]);
+
+    $path = $request->file('foto_serah_terima')->store('claims/serah-terima', 'public');
+
+    $claim->update([
+        'form_payload' => ['text' => $data['form_text']],
+        'handover_proof_photo' => $path,     // ✅ ini yang dipakai admin
+        'status' => 'handover_uploaded',     // ✅ nunggu admin verifikasi
+        'decided_at' => null,
+    ]);
+
+    // notifikasi ke chat (opsional)
+    ChatMessage::create([
+        'thread_id'         => $claim->thread_id,
+        'sender_pelapor_id' => $uid,
+        'message_type'      => 'system',
+        'body'              => "📤 Bukti serah-terima sudah dikirim ke admin untuk verifikasi. (Klaim #{$claim->id})",
+    ]);
+
+    \App\Models\ChatThread::where('id', $claim->thread_id)->update(['last_message_at' => now()]);
+
+    return back()->with('success', 'Bukti berhasil dikirim ke admin. Tunggu verifikasi admin.');
+}
+
+
 }

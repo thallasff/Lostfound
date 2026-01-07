@@ -20,6 +20,7 @@ class HomeController extends Controller
             )
             ->whereNotNull('latitude')
             ->whereNotNull('longitude')
+            ->where('status', '!=', 'selesai')  
             ->get();
 
         $found = Temuan::select(
@@ -32,6 +33,7 @@ class HomeController extends Controller
             )
             ->whereNotNull('latitude')
             ->whereNotNull('longitude')
+            ->whereNotIn('status_verifikasi', ['selesai','ditolak'])  
             ->get();
 
         return view('web.home', compact('lost','found'));

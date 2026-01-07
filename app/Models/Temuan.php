@@ -38,4 +38,11 @@ class Temuan extends Model
         'latitude' => 'float',
         'longitude' => 'float',
     ];
+
+    // app/Models/Temuan.php
+public function getRouteKeyName()
+{
+    return 'penemuan_id';
+}
+
 }

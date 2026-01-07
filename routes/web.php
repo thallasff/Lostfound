@@ -16,8 +16,10 @@ use App\Http\Controllers\ClaimController;
 
 // Controllers admin
 use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\AdminAuthController;
+use App\Http\Controllers\Admin\AdminChatController;
 use App\Http\Controllers\Admin\VerificationController;
-use App\Http\Controllers\Admin\UserManagementController;
+
 
 // OPTIONAL (bawaan Laravel untuk kirim email verifikasi)
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
@@ -78,12 +80,16 @@ Route::get('/chat/claim/{type}/{id}', [ChatController::class, 'claimFromItem'])
     ->where('type', 'hilang|temuan')
     ->whereNumber('id')
     ->name('chat.claimFromItem');
+Route::get('/chat/support', [ChatController::class, 'support'])->name('chat.support');
 
 Route::get('/chat/{thread}', [ChatController::class, 'show'])->name('chat.show');
 Route::post('/chat/{thread}/send', [ChatController::class, 'send'])->name('chat.send');
 Route::delete('/chat/{thread}', [ChatController::class, 'destroy'])->name('chat.destroy');
 Route::post('/chat/{thread}/send-pickup-form', [ChatController::class, 'sendPickupForm'])
     ->name('chat.sendPickupForm');
+
+
+
 
 
 
@@ -124,31 +130,80 @@ Route::post('/chat/{thread}/send-pickup-form', [ChatController::class, 'sendPick
 
 /*
 |--------------------------------------------------------------------------
-| ADMIN ROUTES (LOGIN + ROLE ADMIN)
+| ADMIN ROUTES (GUARD ADMIN)
 |--------------------------------------------------------------------------
 */
 
-Route::prefix('admin')->name('admin.')->middleware(['auth', 'admin'])->group(function () {
+Route::prefix('admin')->name('admin.')->group(function () {
 
-    // Dashboard admin
-    Route::get('/', [AdminDashboardController::class, 'index'])->name('dashboard');
+    // 1) Admin belum login
+    Route::middleware('guest:admin')->group(function () {
+        Route::get('/login', [AdminAuthController::class, 'showLogin'])->name('login');
+        Route::post('/login', [AdminAuthController::class, 'login'])
+            ->middleware('throttle:10,1')
+            ->name('login.submit');
+    });
 
-    // Verifikasi laporan & penemuan
-    Route::get('/verifikasi/laporan', [VerificationController::class, 'laporan'])->name('verify.laporan');
-    Route::get('/verifikasi/penemuan', [VerificationController::class, 'penemuan'])->name('verify.penemuan');
+    // 2) Admin sudah login
+    Route::middleware('auth:admin')->group(function () {
 
-    Route::get('/verifikasi/laporan/{item}', [VerificationController::class, 'showLaporan'])->name('verify.laporan.show');
-    Route::post('/verifikasi/laporan/{item}/approve', [VerificationController::class, 'approveLaporan'])->name('verify.laporan.approve');
-    Route::post('/verifikasi/laporan/{item}/reject', [VerificationController::class, 'rejectLaporan'])->name('verify.laporan.reject');
+        Route::post('/logout', [AdminAuthController::class, 'logout'])->name('logout');
 
-    // Manajemen User
-    Route::get('/users', [UserManagementController::class, 'index'])->name('users.index');
-    Route::get('/users/{user}', [UserManagementController::class, 'show'])->name('users.show');
-    Route::delete('/users/{user}', [UserManagementController::class, 'destroy'])->name('users.destroy');
+        // Dashboard admin
+        Route::get('/', [AdminDashboardController::class, 'index'])->name('dashboard');
 
-    // Moderasi Chat
-    Route::get('/moderasi/chat', [AdminDashboardController::class, 'moderateChat'])->name('moderate.chat');
+        // Verifikasi laporan & penemuan
+        Route::get('/verifikasi/laporan', [VerificationController::class, 'laporan'])->name('verify.laporan');
+        Route::get('/verifikasi/penemuan', [VerificationController::class, 'penemuan'])->name('verify.penemuan');
 
-    // Barang sudah ditemukan
-    Route::post('/items/{item}/mark-returned', [VerificationController::class, 'markReturned'])->name('items.markReturned');
+        Route::get('/verifikasi/laporan/{item}', [VerificationController::class, 'showLaporan'])->name('verify.laporan.show');
+        Route::post('/verifikasi/laporan/{item}/approve', [VerificationController::class, 'approveLaporan'])->name('verify.laporan.approve');
+        Route::post('/verifikasi/laporan/{item}/reject', [VerificationController::class, 'rejectLaporan'])->name('verify.laporan.reject');
+
+        // Manajemen User
+        Route::get('/users', [UserManagementController::class, 'index'])->name('users.index');
+        Route::get('/users/{user}', [UserManagementController::class, 'show'])->name('users.show');
+        Route::delete('/users/{user}', [UserManagementController::class, 'destroy'])->name('users.destroy');
+
+        // Moderasi Chat
+        Route::get('/moderasi/chat', [AdminChatController::class, 'index'])->name('moderate.chat');
+Route::get('/moderasi/chat/{thread}', [AdminChatController::class, 'show'])->name('moderate.chat.show');
+Route::post('/moderasi/chat/{thread}/send', [AdminChatController::class, 'send'])->name('moderate.chat.send');
+
+        // Barang sudah ditemukan
+        Route::post('/items/{item}/mark-returned', [VerificationController::class, 'markReturned'])->name('items.markReturned');
+        Route::get('/verifikasi/laporan', [VerificationController::class, 'laporan'])->name('verify.laporan');
+Route::get('/verifikasi/laporan/{item}', [VerificationController::class, 'showLaporan'])->name('verify.laporan.show');
+
+Route::post('/verifikasi/laporan/{item}/selesai', [VerificationController::class, 'markSelesai'])->name('verify.laporan.selesai');
+Route::post('/verifikasi/laporan/{item}/reject-handover', [VerificationController::class, 'rejectHandover'])->name('verify.laporan.rejectHandover');
+
+// routes/web.php (di dalam Route::middleware('auth:admin')->group(function () { ... })
+
+Route::get('/verifikasi/penemuan', [VerificationController::class, 'penemuan'])->name('verify.penemuan');
+Route::get('/verifikasi/penemuan/{item}', [VerificationController::class, 'showPenemuan'])->name('verify.penemuan.show');
+
+Route::post('/verifikasi/penemuan/{item}/selesai', [VerificationController::class, 'markSelesaiPenemuan'])->name('verify.penemuan.selesai');
+Route::post('/verifikasi/penemuan/{item}/reject-handover', [VerificationController::class, 'rejectHandoverPenemuan'])->name('verify.penemuan.rejectHandover');
+
+    });
+});
+
+
+Route::middleware('auth')->group(function () {
+
+  // penemu kirim form ke chat
+  Route::post('/claim/{thread}/send-form', [ClaimController::class, 'sendForm'])->name('claim.sendForm');
+
+  // pemilik submit jawaban + foto bukti
+  Route::post('/claim/{claim}/submit', [ClaimController::class, 'submit'])->name('claim.submit');
+
+  // penemu approve / reject
+  Route::post('/claim/{claim}/decide', [ClaimController::class, 'decide'])->name('claim.decide');
+
+  // penemu upload bukti serah terima
+  Route::post('/claim/{claim}/handover', [ClaimController::class, 'uploadHandover'])->name('claim.handover');
+
+  Route::post('/claim/{claim}/submit-to-admin', [ClaimController::class, 'submitToAdmin'])
+    ->name('claim.submitToAdmin');
 });

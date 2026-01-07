@@ -7,7 +7,7 @@
       </p>
 
 <div class="flex space-x-6 text-sm">
-  <a href="{{ url('/') }}"
+  <a href="{{ route('chat.support') }}"
      class="text-gray-700 px-3 py-2 rounded-md hover:bg-orange-100 hover:text-orange-600 transition">
     Hubungi Kami
   </a>

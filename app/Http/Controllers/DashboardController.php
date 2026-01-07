@@ -19,6 +19,7 @@ class DashboardController extends Controller
             )
             ->whereNotNull('latitude')
             ->whereNotNull('longitude')
+            ->where('status', '!=', 'selesai')  
             ->get();
 
         $found = Temuan::select(
@@ -31,6 +32,7 @@ class DashboardController extends Controller
             )
             ->whereNotNull('latitude')
             ->whereNotNull('longitude')
+            ->whereNotIn('status_verifikasi', ['selesai','ditolak'])
             ->get();
 
         return view('web.dashboard', compact('lost','found'));

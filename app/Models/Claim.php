@@ -10,26 +10,20 @@ class Claim extends Model
 
     protected $fillable = [
         'thread_id',
-        'barang_type',   // 'hilang' | 'temuan'
+        'barang_type',           // 'hilang' | 'temuan'
         'barang_id',
-        'requester_id',  // yang ngaku (owner/pengambil)
-        'holder_id',     // yang pegang barang (penemu)
-        'status',        // requested|form_sent|submitted|approved|rejected|handover_uploaded|closed
-        'form_data',     // JSON/TEXT (detail dari requester)
-        'foto_klaim_1',
-        'foto_klaim_2',
-        'foto_klaim_3',
-        'foto_serah_terima',
-        'approved_at',
-        'rejected_at',
-        'closed_at',
+        'requester_id',          // yang ngaku/pemilik
+        'owner_id',              // yang pegang barang (penemu/holder)
+        'status',                // requested, form_sent, submitted, approved, rejected, handover_uploaded, closed, dll
+        'form_payload',          // JSON
+        //'claimant_proof_photo',  // bukti kepemilikan (foto)
+        'handover_proof_photo',  // bukti serah terima (foto)
+        'decided_at',
     ];
 
     protected $casts = [
-        'form_data' => 'array',
-        'approved_at' => 'datetime',
-        'rejected_at' => 'datetime',
-        'closed_at' => 'datetime',
+        'form_payload' => 'array',
+        'decided_at' => 'datetime',
     ];
 
     public function thread()

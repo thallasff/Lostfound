@@ -87,8 +87,13 @@ $threads = ChatThread::query()
     $otherUser = $users[$otherId] ?? UserPelapor::with('profile')->where('pelapor_id', $otherId)->first();
     $canSendPickupForm = $this->isFinderUser($thread, $uid);
 
+    $activeClaim = \App\Models\Claim::where('thread_id', $thread->id)
+    ->whereNotIn('status', ['closed', 'closed_by_admin'])
+    ->latest('id')
+    ->first();
+
     return view('chat.index', compact(
-    'threads', 'thread', 'messages', 'users', 'otherUser', 'otherId', 'canSendPickupForm'
+    'threads', 'thread', 'messages', 'users', 'otherUser', 'otherId', 'canSendPickupForm', 'activeClaim'
 ));
 }
 
@@ -278,7 +283,9 @@ public function sendPickupForm(ChatThread $thread)
         'body' => $template,
     ]);
 
+    if (!$thread->last_message_at) {
     $thread->update(['last_message_at' => now()]);
+}
 
     return back()->with('success', 'Form pengambilan barang terkirim.');
 }
@@ -325,5 +332,36 @@ private function isFinderUser(ChatThread $thread, int $uid): bool
 
     return false;
 }
+
+public function support()
+{
+    $uid = auth()->id();          // pelapor_id
+    $supportId = 0;               // virtual admin/support
+
+    $low  = min($uid, $supportId);   // 0
+    $high = max($uid, $supportId);   // uid
+
+    $thread = ChatThread::firstOrCreate(
+        [
+            'barang_type'  => 'support',
+            'barang_id'    => 0,
+            'user_low_id'  => $low,
+            'user_high_id' => $high,
+        ],
+        [
+            'last_message_at' => now(),
+        ]
+    );
+
+    // balikin kalau pernah dihapus
+    $thread->update([
+        'deleted_low_at'  => null,
+        'deleted_high_at' => null,
+        'last_message_at' => $thread->last_message_at ?? now(),
+    ]);
+
+    return redirect()->route('chat.show', $thread->id);
+}
+
 
 }
